@@ -35,41 +35,31 @@
           filter = sourceFilter;
         };
 
-        # lojix-macros needs its own flake-crates inside its source tree.
-        # We create a modified copy with workspace-aware Cargo.toml.
+        # lojix-macros needs workspace-aware Cargo.toml when consumed here.
+        # We copy its source and replace the Cargo.toml with workspace = true deps.
         lojixMacrosPatched = pkgs.runCommand "lojix-macros-patched" {} ''
           cp -rL ${lojix-macros-src} $out
           chmod -R u+w $out
+          cat > $out/Cargo.toml << 'EOF'
+[package]
+name = "lojix-macros"
+version = "0.1.0"
+edition = "2024"
+description = "Proc macros for deriving typed Rust code from samskara's datalog schema"
+authors = ["Li Goldragon <li@goldragon.criome.net>"]
 
-          # Replace path deps with workspace deps
-          cat > $out/Cargo.toml << 'TOML'
-          [package]
-          name = "lojix-macros"
-          version = "0.1.0"
-          edition = "2024"
-          description = "Proc macros for deriving typed Rust code from samskara's datalog schema"
-          authors = ["Li Goldragon <li@goldragon.criome.net>"]
+[lib]
+proc-macro = true
 
-          [lib]
-          proc-macro = true
-
-          [dependencies]
-          criome-cozo = { workspace = true }
-          samskara-codegen = { workspace = true }
-          samskara-core = { workspace = true }
-          syn = { version = "2", features = ["full"] }
-          quote = "1"
-          proc-macro2 = "1"
-          serde_json = "1.0"
-          TOML
-
-          # Create flake-crates pointing to workspace root's copies
-          mkdir -p $out/flake-crates
-          ln -s ../../criome-cozo $out/flake-crates/criome-cozo
-          ln -s ../../samskara-core $out/flake-crates/samskara-core
-          ln -s ../../samskara-codegen $out/flake-crates/samskara-codegen
-          ln -s ../../samskara $out/flake-crates/samskara
-          ln -s ../../noesis-schema $out/flake-crates/noesis-schema
+[dependencies]
+criome-cozo = { workspace = true }
+samskara-codegen = { workspace = true }
+samskara-core = { workspace = true }
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
+serde_json = "1.0"
+EOF
         '';
 
         commonArgs = {
@@ -84,6 +74,11 @@
             cp -rL ${samskara-src} $sourceRoot/flake-crates/samskara
             cp -rL ${noesis-schema-src} $sourceRoot/flake-crates/noesis-schema
             cp -rL ${lojixMacrosPatched} $sourceRoot/flake-crates/lojix-macros
+            chmod -R u+w $sourceRoot/flake-crates/lojix-macros
+            # lojix-macros include_str! needs schema files relative to its CARGO_MANIFEST_DIR
+            mkdir -p $sourceRoot/flake-crates/lojix-macros/flake-crates
+            ln -sf ../../samskara $sourceRoot/flake-crates/lojix-macros/flake-crates/samskara
+            ln -sf ../../noesis-schema $sourceRoot/flake-crates/lojix-macros/flake-crates/noesis-schema
           '';
         };
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
