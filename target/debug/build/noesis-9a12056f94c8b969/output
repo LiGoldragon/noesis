@@ -1,0 +1,5 @@
+cargo:rerun-if-changed=../samskara/schema/samskara-world-init.cozo
+cargo:rerun-if-changed=../samskara/schema/samskara-world-seed.cozo
+cargo:rerun-if-changed=../noesis-schema/noesis-world-init.cozo
+cargo:rerun-if-changed=../noesis-schema/noesis-world-seed.cozo
+cargo:rerun-if-changed=../noesis-schema/noesis-field-type-seed.cozo

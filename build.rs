@@ -1,0 +1,68 @@
+use std::io::Write;
+use std::path::PathBuf;
+
+fn is_comment_only(stmt: &str) -> bool {
+    stmt.lines().all(|line| {
+        let trimmed = line.trim();
+        trimmed.is_empty() || trimmed.starts_with('#') || trimmed == "//"
+    })
+}
+
+fn load_script(db: &criome_cozo::CriomeDb, script: &str) {
+    for stmt in criome_cozo::Script::from_str(script) {
+        let trimmed = stmt.trim();
+        if !trimmed.is_empty() && !is_comment_only(trimmed) {
+            db.run_script(trimmed)
+                .unwrap_or_else(|e| panic!("script load failed: {e}\nStatement: {trimmed}"));
+        }
+    }
+}
+
+fn main() {
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+
+    let db = criome_cozo::CriomeDb::open_memory().expect("open memory db for codegen");
+
+    // Load samskara-core boot schema
+    load_script(&db, samskara_core::boot::CORE_WORLD_INIT);
+    load_script(&db, samskara_core::boot::CORE_WORLD_SEED);
+
+    // Load samskara world schema
+    load_script(&db, include_str!("../samskara/schema/samskara-world-init.cozo"));
+    load_script(&db, include_str!("../samskara/schema/samskara-world-seed.cozo"));
+
+    // Load noesis schema (field_type graph, new domains, translations)
+    load_script(&db, include_str!("../noesis-schema/noesis-world-init.cozo"));
+    load_script(&db, include_str!("../noesis-schema/noesis-world-seed.cozo"));
+    load_script(&db, include_str!("../noesis-schema/noesis-field-type-seed.cozo"));
+
+    // Generate capnp schema — field_type graph is now loaded,
+    // so codegen emits DomainRef/TypedInt instead of Text
+    let schema =
+        samskara_codegen::SchemaGenerator::from_db(&db).expect("codegen schema generation");
+
+    let capnp_text = schema.to_capnp_text().expect("capnp text generation");
+    let capnp_path = out_dir.join("noesis_world.capnp");
+    std::fs::write(&capnp_path, &capnp_text).expect("write .capnp file");
+
+    // Write the generated capnp to a readable location too
+    let debug_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schema/noesis_world.capnp");
+    let _ = std::fs::write(&debug_path, &capnp_text);
+
+    capnpc::CompilerCommand::new()
+        .src_prefix(&out_dir)
+        .file(&capnp_path)
+        .run()
+        .expect("capnp schema compilation failed");
+
+    let hash = schema.schema_hash().expect("schema hash");
+    let hash_path = out_dir.join("schema_hash.txt");
+    let mut f = std::fs::File::create(&hash_path).expect("create schema_hash.txt");
+    write!(f, "{hash}").expect("write schema hash");
+
+    println!("cargo:rerun-if-changed=../samskara/schema/samskara-world-init.cozo");
+    println!("cargo:rerun-if-changed=../samskara/schema/samskara-world-seed.cozo");
+    println!("cargo:rerun-if-changed=../noesis-schema/noesis-world-init.cozo");
+    println!("cargo:rerun-if-changed=../noesis-schema/noesis-world-seed.cozo");
+    println!("cargo:rerun-if-changed=../noesis-schema/noesis-field-type-seed.cozo");
+}

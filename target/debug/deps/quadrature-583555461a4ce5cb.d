@@ -1,0 +1,11 @@
+/home/li/git/noesis/target/debug/deps/quadrature-583555461a4ce5cb.d: /home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/lib.rs /home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/double_exponential/mod.rs /home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/double_exponential/constants.rs /home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/clenshaw_curtis/mod.rs /home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/clenshaw_curtis/constants.rs
+
+/home/li/git/noesis/target/debug/deps/libquadrature-583555461a4ce5cb.rlib: /home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/lib.rs /home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/double_exponential/mod.rs /home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/double_exponential/constants.rs /home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/clenshaw_curtis/mod.rs /home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/clenshaw_curtis/constants.rs
+
+/home/li/git/noesis/target/debug/deps/libquadrature-583555461a4ce5cb.rmeta: /home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/lib.rs /home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/double_exponential/mod.rs /home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/double_exponential/constants.rs /home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/clenshaw_curtis/mod.rs /home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/clenshaw_curtis/constants.rs
+
+/home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/lib.rs:
+/home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/double_exponential/mod.rs:
+/home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/double_exponential/constants.rs:
+/home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/clenshaw_curtis/mod.rs:
+/home/li/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quadrature-0.1.2/src/clenshaw_curtis/constants.rs:
