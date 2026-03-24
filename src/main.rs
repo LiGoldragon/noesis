@@ -1,5 +1,7 @@
+mod agent;
 mod client;
 mod harness;
+mod llm;
 mod schema;
 
 #[allow(unused)]
@@ -54,15 +56,31 @@ struct Cli {
     #[arg(long, value_name = "DIR")]
     run_dir: Option<PathBuf>,
 
-    /// Execute a single query then exit (works with default harness or --connect)
+    /// Execute a single CozoScript query then exit
     #[arg(long, value_name = "SCRIPT")]
     query: Option<String>,
+
+    /// Run an LLM agent with this task description
+    #[arg(long, value_name = "TASK")]
+    agent: Option<String>,
+
+    /// OpenAI-compatible API base URL (default: https://api.openai.com/v1)
+    #[arg(long, env = "NOESIS_LLM_URL", default_value = "https://api.openai.com/v1")]
+    llm_url: String,
+
+    /// API key for the LLM (default: OPENAI_API_KEY env var)
+    #[arg(long, env = "OPENAI_API_KEY")]
+    llm_key: Option<String>,
+
+    /// LLM model name (default: gpt-4o)
+    #[arg(long, env = "NOESIS_LLM_MODEL", default_value = "gpt-4o")]
+    llm_model: String,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
-    // Offline commands — no agent connection needed
+    // Offline commands
     if cli.verify {
         eprintln!("noesis: schema hash = {}", schema::SCHEMA_HASH);
         eprintln!("noesis: verifying domain completeness...");
@@ -85,7 +103,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // Online commands — need agent connection
+    // Online commands
     let rt = tokio::runtime::Runtime::new()?;
     let local = tokio::task::LocalSet::new();
     local.block_on(&rt, async { run_harness(cli).await })
@@ -93,14 +111,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn run_harness(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     let samskara_client = if let Some(socket_path) = &cli.connect {
-        // Connect to existing samskara
         eprintln!("noesis: connecting to samskara at {}", socket_path.display());
         let (client, rpc_system) = client::connect_samskara(socket_path).await?;
         tokio::task::spawn_local(rpc_system);
-        eprintln!("noesis: connected");
         ConnectedHarness::External(client)
     } else {
-        // Boot the full harness — spawn samskara as child process
         let mut config = harness::HarnessConfig::default_config();
         if let Some(bin) = &cli.samskara_bin {
             config.samskara_bin = bin.clone();
@@ -114,7 +129,12 @@ async fn run_harness(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
     let samskara = samskara_client.samskara_ref();
 
-    if let Some(script) = &cli.query {
+    if let Some(task) = &cli.agent {
+        // LLM agent mode
+        let llm = llm::LlmClient::new(&cli.llm_url, cli.llm_key.clone(), &cli.llm_model);
+        eprintln!("noesis: starting agent — model={}, task={task}", cli.llm_model);
+        agent::run_agent_loop(&llm, samskara, task).await?;
+    } else if let Some(script) = &cli.query {
         // Single query mode
         let result = client::rpc_query(samskara, script).await?;
         println!("{}", String::from_utf8_lossy(&result));
@@ -122,7 +142,7 @@ async fn run_harness(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         // Interactive REPL
         eprintln!("noesis: harness ready — enter CozoScript queries (Ctrl-D to exit)");
         eprintln!("noesis: schema hash = {}", schema::SCHEMA_HASH);
-        eprintln!("noesis: {DOMAIN_COUNT} domains, 239 variants");
+        eprintln!("noesis: {DOMAIN_COUNT} domains");
 
         use tokio::io::AsyncBufReadExt;
         let stdin = tokio::io::stdin();
@@ -133,7 +153,7 @@ async fn run_harness(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             eprint!("noesis> ");
             line.clear();
             match reader.read_line(&mut line).await {
-                Ok(0) => break, // EOF
+                Ok(0) => break,
                 Ok(_) => {
                     let trimmed = line.trim();
                     if trimmed.is_empty() { continue; }
@@ -152,7 +172,6 @@ async fn run_harness(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Shutdown
     if let ConnectedHarness::Owned(h) = samskara_client {
         h.shutdown().await?;
     }
@@ -160,7 +179,6 @@ async fn run_harness(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Either an externally-connected client or a harness-owned client.
 enum ConnectedHarness {
     External(crate::samskara_rpc_capnp::samskara::Client),
     Owned(harness::Harness),
