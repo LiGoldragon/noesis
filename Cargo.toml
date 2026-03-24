@@ -1,3 +1,11 @@
+[workspace]
+members = [".", "flake-crates/lojix-macros"]
+
+[workspace.dependencies]
+criome-cozo = { path = "flake-crates/criome-cozo" }
+samskara-core = { path = "flake-crates/samskara-core" }
+samskara-codegen = { path = "flake-crates/samskara-codegen" }
+
 [package]
 name = "noesis"
 version = "0.1.0"
@@ -10,10 +18,10 @@ name = "noesis"
 path = "src/main.rs"
 
 [dependencies]
-lojix-macros = { path = "../lojix/lojix-macros" }
-criome-cozo = { path = "../criome-cozo" }
-samskara-core = { path = "../samskara-core" }
-samskara-codegen = { path = "../samskara-codegen" }
+lojix-macros = { path = "flake-crates/lojix-macros" }
+criome-cozo = { workspace = true }
+samskara-core = { workspace = true }
+samskara-codegen = { workspace = true }
 capnp = "0.21"
 capnp-rpc = "0.21"
 tokio = { version = "1", features = ["full"] }
@@ -24,9 +32,10 @@ blake3 = "1.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+open = "5"
 
 [build-dependencies]
-criome-cozo = { path = "../criome-cozo" }
-samskara-core = { path = "../samskara-core" }
-samskara-codegen = { path = "../samskara-codegen" }
+criome-cozo = { workspace = true }
+samskara-core = { workspace = true }
+samskara-codegen = { workspace = true }
 capnpc = "0.21"

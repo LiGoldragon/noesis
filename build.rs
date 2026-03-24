@@ -27,17 +27,16 @@ fn main() {
     load_script(&db, samskara_core::boot::CORE_WORLD_INIT);
     load_script(&db, samskara_core::boot::CORE_WORLD_SEED);
 
-    // Load samskara world schema
-    load_script(&db, include_str!("../samskara/schema/samskara-world-init.cozo"));
-    load_script(&db, include_str!("../samskara/schema/samskara-world-seed.cozo"));
+    // Load samskara world schema (from flake-crates)
+    load_script(&db, include_str!("flake-crates/samskara/schema/samskara-world-init.cozo"));
+    load_script(&db, include_str!("flake-crates/samskara/schema/samskara-world-seed.cozo"));
 
-    // Load noesis schema (field_type graph, new domains, translations)
-    load_script(&db, include_str!("../noesis-schema/noesis-world-init.cozo"));
-    load_script(&db, include_str!("../noesis-schema/noesis-world-seed.cozo"));
-    load_script(&db, include_str!("../noesis-schema/noesis-field-type-seed.cozo"));
+    // Load noesis schema (from flake-crates)
+    load_script(&db, include_str!("flake-crates/noesis-schema/noesis-world-init.cozo"));
+    load_script(&db, include_str!("flake-crates/noesis-schema/noesis-world-seed.cozo"));
+    load_script(&db, include_str!("flake-crates/noesis-schema/noesis-field-type-seed.cozo"));
 
-    // Generate capnp schema — field_type graph is now loaded,
-    // so codegen emits DomainRef/TypedInt instead of Text
+    // Generate capnp schema — field_type graph is now loaded
     let schema =
         samskara_codegen::SchemaGenerator::from_db(&db).expect("codegen schema generation");
 
@@ -45,7 +44,6 @@ fn main() {
     let capnp_path = out_dir.join("noesis_world.capnp");
     std::fs::write(&capnp_path, &capnp_text).expect("write .capnp file");
 
-    // Write the generated capnp to a readable location too
     let debug_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schema/noesis_world.capnp");
     let _ = std::fs::write(&debug_path, &capnp_text);
 
@@ -60,18 +58,18 @@ fn main() {
     let mut f = std::fs::File::create(&hash_path).expect("create schema_hash.txt");
     write!(f, "{hash}").expect("write schema hash");
 
-    // Compile samskara RPC interface schema (for client stubs)
+    // Compile samskara RPC interface schema (from flake-crates)
     capnpc::CompilerCommand::new()
-        .src_prefix("../samskara/schema")
-        .file("../samskara/schema/samskara-rpc.capnp")
+        .src_prefix("flake-crates/samskara/schema")
+        .file("flake-crates/samskara/schema/samskara-rpc.capnp")
         .output_path(&out_dir)
         .run()
         .expect("samskara-rpc.capnp compilation failed");
 
-    println!("cargo:rerun-if-changed=../samskara/schema/samskara-rpc.capnp");
-    println!("cargo:rerun-if-changed=../samskara/schema/samskara-world-init.cozo");
-    println!("cargo:rerun-if-changed=../samskara/schema/samskara-world-seed.cozo");
-    println!("cargo:rerun-if-changed=../noesis-schema/noesis-world-init.cozo");
-    println!("cargo:rerun-if-changed=../noesis-schema/noesis-world-seed.cozo");
-    println!("cargo:rerun-if-changed=../noesis-schema/noesis-field-type-seed.cozo");
+    println!("cargo:rerun-if-changed=flake-crates/samskara/schema/samskara-rpc.capnp");
+    println!("cargo:rerun-if-changed=flake-crates/samskara/schema/samskara-world-init.cozo");
+    println!("cargo:rerun-if-changed=flake-crates/samskara/schema/samskara-world-seed.cozo");
+    println!("cargo:rerun-if-changed=flake-crates/noesis-schema/noesis-world-init.cozo");
+    println!("cargo:rerun-if-changed=flake-crates/noesis-schema/noesis-world-seed.cozo");
+    println!("cargo:rerun-if-changed=flake-crates/noesis-schema/noesis-field-type-seed.cozo");
 }
