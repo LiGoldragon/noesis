@@ -1,4 +1,5 @@
 mod client;
+mod harness;
 mod schema;
 
 #[allow(unused)]
@@ -16,7 +17,6 @@ use std::path::PathBuf;
 use clap::Parser;
 
 // Generate ALL domain enums and dispatch tables from the Domain registry.
-// Zero hand-maintained lists. Adding a domain to samskara → it appears here.
 lojix_macros::domain_registry!();
 
 /// Typed integer qualified by Measure and Unit (Young's Geometry of Meaning).
@@ -42,11 +42,19 @@ struct Cli {
     #[arg(long, num_args = 2, value_names = &["DOMAIN", "DISCRIMINANT"])]
     translate: Option<Vec<String>>,
 
-    /// Connect to samskara capnp RPC on this Unix socket and run integration test
+    /// Connect to an already-running samskara (skip spawning)
     #[arg(long, value_name = "SOCKET_PATH")]
     connect: Option<PathBuf>,
 
-    /// Execute a CozoScript query via capnp RPC (requires --connect)
+    /// Path to samskara binary (default: find in PATH)
+    #[arg(long, value_name = "PATH")]
+    samskara_bin: Option<PathBuf>,
+
+    /// Directory for Unix sockets (default: /tmp/noesis)
+    #[arg(long, value_name = "DIR")]
+    run_dir: Option<PathBuf>,
+
+    /// Execute a single query then exit (works with default harness or --connect)
     #[arg(long, value_name = "SCRIPT")]
     query: Option<String>,
 }
@@ -54,6 +62,7 @@ struct Cli {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
+    // Offline commands — no agent connection needed
     if cli.verify {
         eprintln!("noesis: schema hash = {}", schema::SCHEMA_HASH);
         eprintln!("noesis: verifying domain completeness...");
@@ -76,86 +85,92 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    if let Some(socket_path) = &cli.connect {
-        let rt = tokio::runtime::Runtime::new()?;
-        let local = tokio::task::LocalSet::new();
-        return local.block_on(&rt, async {
-            run_connected(socket_path, cli.query.as_deref()).await
-        });
+    // Online commands — need agent connection
+    let rt = tokio::runtime::Runtime::new()?;
+    let local = tokio::task::LocalSet::new();
+    local.block_on(&rt, async { run_harness(cli).await })
+}
+
+async fn run_harness(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+    let samskara_client = if let Some(socket_path) = &cli.connect {
+        // Connect to existing samskara
+        eprintln!("noesis: connecting to samskara at {}", socket_path.display());
+        let (client, rpc_system) = client::connect_samskara(socket_path).await?;
+        tokio::task::spawn_local(rpc_system);
+        eprintln!("noesis: connected");
+        ConnectedHarness::External(client)
+    } else {
+        // Boot the full harness — spawn samskara as child process
+        let mut config = harness::HarnessConfig::default_config();
+        if let Some(bin) = &cli.samskara_bin {
+            config.samskara_bin = bin.clone();
+        }
+        if let Some(dir) = &cli.run_dir {
+            config.run_dir = dir.clone();
+        }
+        let h = harness::Harness::boot(config).await?;
+        ConnectedHarness::Owned(h)
+    };
+
+    let samskara = samskara_client.samskara_ref();
+
+    if let Some(script) = &cli.query {
+        // Single query mode
+        let result = client::rpc_query(samskara, script).await?;
+        println!("{}", String::from_utf8_lossy(&result));
+    } else {
+        // Interactive REPL
+        eprintln!("noesis: harness ready — enter CozoScript queries (Ctrl-D to exit)");
+        eprintln!("noesis: schema hash = {}", schema::SCHEMA_HASH);
+        eprintln!("noesis: {DOMAIN_COUNT} domains, 239 variants");
+
+        use tokio::io::AsyncBufReadExt;
+        let stdin = tokio::io::stdin();
+        let mut reader = tokio::io::BufReader::new(stdin);
+        let mut line = String::new();
+
+        loop {
+            eprint!("noesis> ");
+            line.clear();
+            match reader.read_line(&mut line).await {
+                Ok(0) => break, // EOF
+                Ok(_) => {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() { continue; }
+                    if trimmed == "exit" || trimmed == "quit" { break; }
+
+                    match client::rpc_query(samskara, trimmed).await {
+                        Ok(result) => println!("{}", String::from_utf8_lossy(&result)),
+                        Err(e) => eprintln!("error: {e}"),
+                    }
+                }
+                Err(e) => {
+                    eprintln!("read error: {e}");
+                    break;
+                }
+            }
+        }
     }
 
-    eprintln!("noesis: harness ready");
-    eprintln!("noesis: schema hash = {}", schema::SCHEMA_HASH);
-    eprintln!("noesis: {DOMAIN_COUNT} domains, {} names", DOMAIN_NAMES.len());
-    eprintln!("noesis: use --verify, --dump-domains, --translate, or --connect");
+    // Shutdown
+    if let ConnectedHarness::Owned(h) = samskara_client {
+        h.shutdown().await?;
+    }
 
     Ok(())
 }
 
-async fn run_connected(socket_path: &PathBuf, query: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
-    eprintln!("noesis: connecting to samskara at {}", socket_path.display());
+/// Either an externally-connected client or a harness-owned client.
+enum ConnectedHarness {
+    External(crate::samskara_rpc_capnp::samskara::Client),
+    Owned(harness::Harness),
+}
 
-    let (samskara, rpc_system) = client::connect_samskara(socket_path).await?;
-
-    // Drive the RPC system in the background
-    tokio::task::spawn_local(rpc_system);
-
-    if let Some(script) = query {
-        // Execute a specific query
-        eprintln!("noesis: query via capnp RPC: {script}");
-        let result = client::rpc_query(&samskara, script).await?;
-        let text = String::from_utf8_lossy(&result);
-        println!("{text}");
-    } else {
-        // Integration test: exercise all RPC methods
-        eprintln!("noesis: running integration test...");
-
-        // 1. List relations
-        eprintln!("  [1] listRelations");
-        let result = client::rpc_list_relations(&samskara).await?;
-        eprintln!("      got {} bytes", result.len());
-        assert!(!result.is_empty(), "listRelations returned empty");
-
-        // 2. Describe a relation
-        eprintln!("  [2] describeRelation(Phase)");
-        let result = client::rpc_describe_relation(&samskara, "Phase").await?;
-        let text = String::from_utf8_lossy(&result);
-        eprintln!("      {text}");
-        assert!(text.contains("name"), "Phase should have a name column");
-
-        // 3. Query
-        eprintln!("  [3] query(?[name] := *Phase{{name}})");
-        let result = client::rpc_query(&samskara, "?[name] := *Phase{name} :order name").await?;
-        let text = String::from_utf8_lossy(&result);
-        eprintln!("      {text}");
-        assert!(text.contains("manifest"), "Phase should contain manifest");
-
-        // 4. Assert a thought
-        eprintln!("  [4] assertThought(noesis integration test)");
-        let hash = client::rpc_assert_thought(
-            &samskara,
-            "observation",
-            "global",
-            "draft",
-            "noesis integration test",
-            "This thought was asserted via capnp RPC from the noesis harness.",
-        ).await?;
-        let hash_text = String::from_utf8_lossy(&hash);
-        eprintln!("      title_hash = {hash_text}");
-        assert!(!hash.is_empty(), "assertThought returned empty hash");
-
-        // 5. Query thoughts to find what we just wrote
-        eprintln!("  [5] query to verify thought exists");
-        let result = client::rpc_query(
-            &samskara,
-            "?[title] := *thought{kind: \"observation\", scope: \"global\", title_hash, status, title, body, created_ts, updated_ts, phase, dignity}, title == \"noesis integration test\""
-        ).await?;
-        let text = String::from_utf8_lossy(&result);
-        eprintln!("      {text}");
-        assert!(text.contains("noesis integration test"), "thought should be findable");
-
-        eprintln!("noesis: integration test PASSED — 5/5 methods verified via capnp RPC");
+impl ConnectedHarness {
+    fn samskara_ref(&self) -> &crate::samskara_rpc_capnp::samskara::Client {
+        match self {
+            ConnectedHarness::External(c) => c,
+            ConnectedHarness::Owned(h) => &h.samskara,
+        }
     }
-
-    Ok(())
 }
