@@ -1,7 +1,5 @@
-mod agent;
 mod client;
 mod harness;
-mod llm;
 mod schema;
 
 #[allow(unused)]
@@ -59,22 +57,6 @@ struct Cli {
     /// Execute a single CozoScript query then exit
     #[arg(long, value_name = "SCRIPT")]
     query: Option<String>,
-
-    /// Run an LLM agent with this task description
-    #[arg(long, value_name = "TASK")]
-    agent: Option<String>,
-
-    /// OpenAI-compatible API base URL (default: https://api.openai.com/v1)
-    #[arg(long, env = "NOESIS_LLM_URL", default_value = "https://api.openai.com/v1")]
-    llm_url: String,
-
-    /// API key for the LLM (default: OPENAI_API_KEY env var)
-    #[arg(long, env = "OPENAI_API_KEY")]
-    llm_key: Option<String>,
-
-    /// LLM model name (default: gpt-4o)
-    #[arg(long, env = "NOESIS_LLM_MODEL", default_value = "gpt-4o")]
-    llm_model: String,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -129,12 +111,7 @@ async fn run_harness(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
     let samskara = samskara_client.samskara_ref();
 
-    if let Some(task) = &cli.agent {
-        // LLM agent mode
-        let llm = llm::LlmClient::new(&cli.llm_url, cli.llm_key.clone(), &cli.llm_model);
-        eprintln!("noesis: starting agent — model={}, task={task}", cli.llm_model);
-        agent::run_agent_loop(&llm, samskara, task).await?;
-    } else if let Some(script) = &cli.query {
+    if let Some(script) = &cli.query {
         // Single query mode
         let result = client::rpc_query(samskara, script).await?;
         println!("{}", String::from_utf8_lossy(&result));
