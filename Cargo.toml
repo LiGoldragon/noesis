@@ -40,3 +40,4 @@ samskara-codegen = { workspace = true }
 sema-core = { workspace = true }
 sema = { workspace = true }
 capnpc = "0.21"
+serde_json = "1.0"

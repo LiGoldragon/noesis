@@ -46,6 +46,10 @@ fn main() {
     load_script(&db, sema::SEED);
     load_script(&db, sema::FIELD_SEED);
 
+    // Populate Layer 2: self-describing schema from live DB
+    let schema_hash = "build";
+    populate_layer2(&db, schema_hash);
+
     // Generate capnp schema — field_type graph is now loaded
     let schema =
         samskara_codegen::SchemaGenerator::from_db(&db).expect("codegen schema generation");
@@ -82,4 +86,60 @@ fn main() {
     println!("cargo:rerun-if-changed=flake-crates/noesis-schema/noesis-world-init.cozo");
     println!("cargo:rerun-if-changed=flake-crates/noesis-schema/noesis-world-seed.cozo");
     println!("cargo:rerun-if-changed=flake-crates/noesis-schema/noesis-field-type-seed.cozo");
+}
+
+/// Populate schema_entry and schema_variant from the live DB.
+/// Every domain becomes a schema_entry with structure=enum.
+/// Every domain variant becomes a schema_variant.
+fn populate_layer2(db: &criome_cozo::CriomeDb, schema_hash: &str) {
+    // Get all domains
+    let domains_result = db.run_script("?[name] := *Domain{name} :order name")
+        .expect("query domains for layer2");
+    let domains_json: serde_json::Value = serde_json::from_str(
+        &domains_result.to_string()
+    ).expect("parse domains json");
+
+    let domain_names: Vec<&str> = domains_json.get("rows")
+        .and_then(|v| v.as_array())
+        .map(|rows| rows.iter()
+            .filter_map(|row| row.as_array()
+                .and_then(|a| a.first())
+                .and_then(|v| v.as_str()))
+            .collect())
+        .unwrap_or_default();
+
+    // Insert schema_entry for each domain (structure = enum = ordinal 1)
+    for (ordinal, domain) in domain_names.iter().enumerate() {
+        let script = format!(
+            "?[schema, name, structure, ordinal, phase, dignity] <- [[\"{schema_hash}\", \"{domain}\", \"enum\", {ordinal}, \"manifest\", \"eternal\"]] :put schema_entry {{schema, name => structure, ordinal, phase, dignity}}"
+        );
+        if let Err(e) = db.run_script(&script) {
+            eprintln!("cargo:warning=layer2 schema_entry for {domain}: {e}");
+        }
+    }
+
+    // Insert schema_variant for each domain's variants
+    for domain in &domain_names {
+        let query = format!("?[name] := *{domain}{{name}} :order name");
+        if let Ok(result) = db.run_script(&query) {
+            let json: serde_json::Value = serde_json::from_str(
+                &result.to_string()
+            ).unwrap_or_default();
+
+            if let Some(rows) = json.get("rows").and_then(|v| v.as_array()) {
+                for (ordinal, row) in rows.iter().enumerate() {
+                    if let Some(variant) = row.as_array().and_then(|a| a.first()).and_then(|v| v.as_str()) {
+                        let script = format!(
+                            "?[schema, owner, name, ordinal, phase, dignity] <- [[\"{schema_hash}\", \"{domain}\", \"{variant}\", {ordinal}, \"manifest\", \"eternal\"]] :put schema_variant {{schema, owner, name => ordinal, phase, dignity}}"
+                        );
+                        if let Err(e) = db.run_script(&script) {
+                            eprintln!("cargo:warning=layer2 schema_variant {domain}::{variant}: {e}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    eprintln!("cargo:warning=layer2: populated schema_entry + schema_variant for {} domains", domain_names.len());
 }
