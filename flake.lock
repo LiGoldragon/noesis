@@ -73,11 +73,11 @@
     "lojix-macros-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1774366848,
-        "narHash": "sha256-Ya7NpMIzBvzlAAWM99TyMIMaym0G6Eu+J+k9SprrisA=",
+        "lastModified": 1774408897,
+        "narHash": "sha256-yRdfQQQy9mn0GiV5S3h+rPSZiN/jaRPWi/r2eKmPGes=",
         "owner": "LiGoldragon",
         "repo": "lojix-macros",
-        "rev": "f1f19e3d2a4930840bdf4c68e7ef3723208de772",
+        "rev": "61d54b1e2712346c7978d10a1784bff5f2e024ac",
         "type": "github"
       },
       "original": {
@@ -129,7 +129,9 @@
         "noesis-schema-src": "noesis-schema-src",
         "samskara-codegen-src": "samskara-codegen-src",
         "samskara-core-src": "samskara-core-src",
-        "samskara-src": "samskara-src"
+        "samskara-src": "samskara-src",
+        "sema-core-src": "sema-core-src",
+        "sema-src": "sema-src"
       }
     },
     "rust-analyzer-src": {
@@ -194,6 +196,38 @@
       "original": {
         "owner": "LiGoldragon",
         "repo": "samskara",
+        "type": "github"
+      }
+    },
+    "sema-core-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1774408891,
+        "narHash": "sha256-NarWAIbZQFVLwLJBg2xW1UzVhP4RSMpAGoRxIqXhssY=",
+        "owner": "LiGoldragon",
+        "repo": "sema-core",
+        "rev": "fdaf4043ecd26e7712e72513f2806f98e8740306",
+        "type": "github"
+      },
+      "original": {
+        "owner": "LiGoldragon",
+        "repo": "sema-core",
+        "type": "github"
+      }
+    },
+    "sema-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1774408894,
+        "narHash": "sha256-jP9U0M5k/8HSfG1X0Rf/nJdO2jekoUyzjRXmqFHOxO8=",
+        "owner": "LiGoldragon",
+        "repo": "sema",
+        "rev": "46e12f654873c16260893f451396c82cfde62e1b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "LiGoldragon",
+        "repo": "sema",
         "type": "github"
       }
     },
