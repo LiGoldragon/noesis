@@ -1,31 +1,28 @@
 #!/usr/bin/env python3
 """Pure binary LLM test.
 
-Phase 1: Text preamble teaches the schema + encoding rules + examples.
-Phase 2: Switch to binary — the "user message" is raw byte values,
-         the expected response is raw byte values.
-
-Tokens are bytes. If the output bytes ARE capnp, the LLM speaks binary.
+Text preamble teaches the schema. Then the actual messages
+are RAW BINARY BYTES — the prompt string's bytes ARE the capnp message.
+The model's output bytes ARE the capnp response.
+No arrays. No hex. No text representation. Bytes in, bytes out.
 """
 
 import json
-import struct
 import subprocess
 import sys
 import urllib.request
+import urllib.error
 
 LLM_URL = "http://prometheus.maisiliym.criome:11434/v1"
 LLM_KEY = "sk-no-key-required"
-LLM_MODEL = "qwen3.5-27b"
-
+LLM_MODEL = "gpt-oss-120b"
 SCHEMA_FILE = "test.capnp"
 
 
 def capnp_encode(text_value: str) -> bytes:
     result = subprocess.run(
         ["capnp", "encode", SCHEMA_FILE, "TypedFact"],
-        input=text_value.encode(),
-        capture_output=True,
+        input=text_value.encode(), capture_output=True,
     )
     return result.stdout
 
@@ -33,13 +30,31 @@ def capnp_encode(text_value: str) -> bytes:
 def capnp_decode(binary: bytes) -> str:
     result = subprocess.run(
         ["capnp", "decode", SCHEMA_FILE, "TypedFact"],
-        input=binary,
-        capture_output=True,
+        input=binary, capture_output=True,
     )
     return result.stdout.decode().strip()
 
 
-def call_llm(messages: list, max_tokens: int = 64) -> dict:
+def bytes_to_json_str(b: bytes) -> str:
+    """Convert raw bytes to a JSON-safe string where each byte IS a character.
+    Non-printable bytes become unicode escapes in the JSON encoding,
+    but the tokenizer sees them as individual byte tokens."""
+    chars = []
+    for byte in b:
+        if byte == 0:
+            chars.append("\x00")
+        elif byte < 0x20 or byte == 0x7f:
+            chars.append(chr(byte))
+        elif byte == ord('"'):
+            chars.append('"')
+        elif byte == ord('\\'):
+            chars.append('\\')
+        else:
+            chars.append(chr(byte))
+    return "".join(chars)
+
+
+def call_llm(messages: list, max_tokens: int = 48) -> dict:
     data = json.dumps({
         "model": LLM_MODEL,
         "temperature": 0,
@@ -59,196 +74,143 @@ def call_llm(messages: list, max_tokens: int = 64) -> dict:
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:
         body = e.read().decode()
-        print(f"  HTTP {e.code}: {body[:300]}")
+        print(f"  HTTP {e.code}: {body[:200]}")
+        return {"choices": []}
+    except Exception as e:
+        print(f"  Error: {e}")
         return {"choices": []}
 
 
-def extract_content(response: dict) -> str:
+def extract_raw_bytes(response: dict) -> bytes:
+    """Get the raw bytes of the model's output.
+    The content string's encoding IS the binary."""
     choices = response.get("choices", [])
     if not choices:
-        return ""
-    return choices[0].get("message", {}).get("content", "")
-
-
-def content_to_bytes(content: str) -> bytes:
-    """Parse model output to bytes. Try multiple formats."""
-    raw = content.strip()
-
-    # JSON array of ints: [0, 0, 0, 0, 2, 0, ...]
-    if raw.startswith("[") and raw.endswith("]"):
-        try:
-            vals = json.loads(raw)
-            if isinstance(vals, list) and all(isinstance(v, int) for v in vals):
-                return bytes(v & 0xFF for v in vals)
-        except Exception:
-            pass
-
-    # Hex string: 00000000020000...
-    cleaned = raw.replace(" ", "").replace("\n", "").replace("\r", "")
-    if cleaned.startswith("0x"):
-        cleaned = cleaned[2:]
-    try:
-        return bytes.fromhex(cleaned)
-    except ValueError:
-        pass
-
-    # Space/comma-separated decimal: 0 0 0 0 2 0 0 0 ...
-    try:
-        parts = raw.replace(",", " ").replace("[", "").replace("]", "").split()
-        vals = [int(x) for x in parts]
-        if all(0 <= v <= 255 for v in vals):
-            return bytes(vals)
-    except ValueError:
-        pass
-
-    return raw.encode("utf-8")
+        return b""
+    content = choices[0].get("message", {}).get("content", "")
+    # The string's bytes ARE the message
+    return content.encode("utf-8") if content else b""
 
 
 def make_preamble() -> str:
     with open(SCHEMA_FILE) as f:
         schema = f.read()
 
-    examples = []
-    training = [
-        "(phase = becoming, element = air, confirmed = false)",
-        "(phase = manifest, element = fire, confirmed = true)",
-        "(phase = retired, element = earth, confirmed = true)",
-        "(phase = becoming, element = water, confirmed = true)",
-        "(phase = manifest, element = air, confirmed = false)",
-    ]
-
-    for text_val in training:
-        binary = capnp_encode(text_val)
-        byte_list = list(binary)
-        examples.append(f"  {text_val}\n  → {byte_list}")
-
-    return f"""You are a binary encoder. You will learn a schema, then communicate purely in byte sequences.
+    return f"""You are a binary capnp encoder. After this preamble, ALL communication is raw bytes. No text.
 
 SCHEMA:
 {schema}
 
-TypedFact is 24 bytes:
-  [0-7]   header:  [0, 0, 0, 0, 2, 0, 0, 0]
-  [8-15]  pointer: [0, 0, 0, 0, 1, 0, 0, 0]
-  [16-17] phase:   u16 LE (becoming=0, manifest=1, retired=2)
-  [18-19] element: u16 LE (air=0, earth=1, fire=2, water=3)
-  [20]    confirmed: bool (0=false, 1=true)
-  [21-23] padding: [0, 0, 0]
+TypedFact = 24 bytes:
+  [0-7]   header:  0x00 0x00 0x00 0x00 0x02 0x00 0x00 0x00
+  [8-15]  pointer: 0x00 0x00 0x00 0x00 0x01 0x00 0x00 0x00
+  [16-17] phase:   u16LE (becoming=0, manifest=1, retired=2)
+  [18-19] element: u16LE (air=0, earth=1, fire=2, water=3)
+  [20]    confirmed: 0x00=false, 0x01=true
+  [21-23] padding: 0x00 0x00 0x00
 
-TRAINING EXAMPLES (text → bytes):
-{chr(10).join(examples)}
+PROTOCOL:
+- I send you 3 bytes: [phase_byte, element_byte, confirmed_byte]
+- You respond with the FULL 24 raw bytes of the capnp encoding
+- Your response IS the bytes. Not hex. Not text. The actual byte values as characters.
 
-RULES:
-- After training, I will give you inputs as byte arrays
-- You respond with ONLY a byte array — the 24-byte encoding
-- No text, no explanation, no markdown — just the array of 24 integers
-- Example response format: [0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0, 1, 0, 0, 0]"""
-
-
-def run_test(test_num: int, target_text: str, messages: list) -> tuple:
-    """Run one test. Returns (passed, updated_messages)."""
-    expected = capnp_encode(target_text)
-    expected_list = list(expected)
-
-    # Build binary-style prompt: show the target as its semantic components
-    # but ask for bytes back. After first few tests, switch to pure byte input.
-    if test_num <= 3:
-        # Early tests: text input, byte output (teaching phase)
-        user_msg = f"Encode: {target_text}"
-    else:
-        # Later tests: byte input (the "query" is a partial encoding to complete)
-        # Give the phase and element as discriminant values
-        parts = target_text.strip("()").split(",")
-        phase_map = {"becoming": 0, "manifest": 1, "retired": 2}
-        element_map = {"air": 0, "earth": 1, "fire": 2, "water": 3}
-        bool_map = {"false": 0, "true": 1}
-
-        phase_val = phase_map.get(parts[0].split("=")[1].strip(), 0)
-        element_val = element_map.get(parts[1].split("=")[1].strip(), 0)
-        confirmed_val = bool_map.get(parts[2].split("=")[1].strip(), 0)
-
-        # Pure binary prompt: just the discriminant values
-        user_msg = f"[{phase_val}, {element_val}, {confirmed_val}]"
-
-    messages.append({"role": "user", "content": user_msg})
-
-    print(f"Test {test_num}: {target_text}")
-    print(f"  Prompt: {user_msg}")
-    print(f"  Expected: {expected_list}")
-
-    response = call_llm(messages, max_tokens=80)
-    content = extract_content(response)
-    actual = content_to_bytes(content)
-
-    print(f"  Model says: {content[:120]}")
-    print(f"  Parsed: {list(actual)[:24]}")
-
-    passed = False
-    if len(actual) >= 24 and actual[:24] == expected:
-        decoded = capnp_decode(actual[:24])
-        print(f"  capnp decode: {decoded}")
-        print(f"  ✓ PASS — bit-for-bit capnp")
-        passed = True
-        # Add the correct response to conversation history
-        messages.append({"role": "assistant", "content": json.dumps(expected_list)})
-    else:
-        print(f"  ✗ FAIL")
-        if len(actual) >= 24:
-            for i in range(24):
-                e = expected_list[i]
-                g = actual[i] if i < len(actual) else "?"
-                if e != g:
-                    print(f"    byte {i}: expected {e}, got {g}")
-            try:
-                decoded = capnp_decode(actual[:24])
-                print(f"  capnp decode (attempt): {decoded}")
-            except Exception:
-                pass
-        # Still add correct answer so conversation stays on track
-        messages.append({"role": "assistant", "content": json.dumps(expected_list)})
-
-    return passed, messages
+TRAINING (I show text, you respond with raw 24 bytes):"""
 
 
 def main():
     print("=" * 60)
     print("PURE BINARY LLM TEST")
     print(f"Model: {LLM_MODEL}")
-    print(f"Phase 1: text preamble teaches schema")
-    print(f"Phase 2: binary-only (byte arrays in, byte arrays out)")
+    print("Preamble: text schema teaching")
+    print("Messages: RAW BINARY BYTES as string characters")
     print("=" * 60)
     print()
 
-    tests = [
-        # Phase 1: text input → byte output (teaching)
-        "(phase = retired, element = water, confirmed = false)",
-        "(phase = manifest, element = earth, confirmed = false)",
-        "(phase = becoming, element = fire, confirmed = true)",
-        # Phase 2: binary input → byte output (pure binary)
-        "(phase = retired, element = air, confirmed = true)",
-        "(phase = manifest, element = water, confirmed = true)",
-        "(phase = becoming, element = earth, confirmed = false)",
-        "(phase = retired, element = fire, confirmed = false)",
+    # Training examples as (text_description, capnp_bytes)
+    training = [
+        "(phase = becoming, element = air, confirmed = false)",
+        "(phase = manifest, element = fire, confirmed = true)",
+        "(phase = retired, element = earth, confirmed = true)",
     ]
 
-    preamble = make_preamble()
-    messages = [{"role": "system", "content": preamble}]
+    # Build conversation: system preamble + training pairs
+    messages = [{"role": "system", "content": make_preamble()}]
+
+    # Add training: user sends text description, assistant responds with raw bytes
+    for text_val in training:
+        binary = capnp_encode(text_val)
+        binary_str = bytes_to_json_str(binary)
+        messages.append({"role": "user", "content": text_val})
+        messages.append({"role": "assistant", "content": binary_str})
+
+    # Transition message
+    messages.append({
+        "role": "user",
+        "content": "Good. Now switching to pure binary. I send 3 bytes, you send 24 bytes. No text."
+    })
+    messages.append({
+        "role": "assistant",
+        "content": bytes_to_json_str(b"\x00")  # ACK byte
+    })
+
+    # Now test: send raw bytes, expect raw bytes back
+    tests = [
+        # (phase, element, confirmed) as raw byte values
+        (2, 3, 0, "(phase = retired, element = water, confirmed = false)"),
+        (1, 1, 0, "(phase = manifest, element = earth, confirmed = false)"),
+        (0, 2, 1, "(phase = becoming, element = fire, confirmed = true)"),
+        (2, 0, 1, "(phase = retired, element = air, confirmed = true)"),
+        (1, 3, 1, "(phase = manifest, element = water, confirmed = true)"),
+    ]
 
     passed = 0
     total = len(tests)
 
-    for i, target in enumerate(tests):
-        ok, messages = run_test(i + 1, target, messages)
-        if ok:
+    for i, (phase, element, confirmed, text_desc) in enumerate(tests):
+        # The input IS binary: 3 raw bytes
+        input_bytes = bytes([phase, element, confirmed])
+        input_str = bytes_to_json_str(input_bytes)
+
+        expected = capnp_encode(text_desc)
+
+        print(f"Test {i+1}: sending bytes [{phase}, {element}, {confirmed}]")
+        print(f"  = {text_desc}")
+        print(f"  Input bytes: {list(input_bytes)}")
+        print(f"  Expected output: {list(expected)} ({len(expected)} bytes)")
+
+        messages.append({"role": "user", "content": input_str})
+        response = call_llm(messages, max_tokens=48)
+        output_bytes = extract_raw_bytes(response)
+
+        print(f"  Got {len(output_bytes)} bytes: {list(output_bytes)[:24]}")
+
+        if len(output_bytes) >= 24 and output_bytes[:24] == expected:
+            decoded = capnp_decode(output_bytes[:24])
+            print(f"  capnp decode: {decoded}")
+            print(f"  PASS")
             passed += 1
+            messages.append({"role": "assistant", "content": bytes_to_json_str(expected)})
+        else:
+            print(f"  FAIL")
+            if len(output_bytes) >= 24:
+                try:
+                    decoded = capnp_decode(output_bytes[:24])
+                    print(f"  capnp decode (attempt): {decoded}")
+                except Exception:
+                    print(f"  capnp decode failed")
+                for j in range(min(24, len(output_bytes))):
+                    e = expected[j] if j < len(expected) else "?"
+                    g = output_bytes[j]
+                    if e != g:
+                        print(f"    byte {j}: expected {e}, got {g}")
+            # Still add correct answer for context
+            messages.append({"role": "assistant", "content": bytes_to_json_str(expected)})
         print()
 
     print("=" * 60)
     print(f"Results: {passed}/{total}")
     if passed == total:
-        print("ALL PASS — LLM produces bit-for-bit valid capnp binary")
-    elif passed >= 4:
-        print(f"Binary phase: {passed-3}/{total-3} pure binary tests passed")
+        print("ALL PASS — LLM produces raw capnp binary bytes directly")
     print("=" * 60)
 
 
