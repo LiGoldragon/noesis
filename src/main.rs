@@ -1,5 +1,6 @@
 mod client;
 mod harness;
+mod protocol;
 mod schema;
 
 #[allow(unused)]
@@ -57,6 +58,10 @@ struct Cli {
     /// Execute a single CozoScript query then exit
     #[arg(long, value_name = "SCRIPT")]
     query: Option<String>,
+
+    /// Run multi-turn binary protocol (stdin: Turn bytes, stdout: Response bytes)
+    #[arg(long)]
+    protocol: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -111,7 +116,57 @@ async fn run_harness(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
     let samskara = samskara_client.samskara_ref();
 
-    if let Some(script) = &cli.query {
+    if cli.protocol {
+        // Multi-turn binary protocol mode
+        eprintln!("noesis: protocol mode — reading Turn bytes from stdin, writing Response bytes to stdout");
+        eprintln!("noesis: schema hash = {}", schema::SCHEMA_HASH);
+        eprintln!("noesis: {DOMAIN_COUNT} domains");
+
+        use tokio::io::AsyncReadExt;
+        use tokio::io::AsyncWriteExt;
+        let mut stdin = tokio::io::stdin();
+        let mut stdout = tokio::io::stdout();
+        let mut buf = [0u8; 10]; // Turn is 10 bytes
+
+        loop {
+            match stdin.read_exact(&mut buf).await {
+                Ok(_) => {
+                    let turn = match protocol::turn_from_bytes(&buf) {
+                        Some(t) => t,
+                        None => {
+                            eprintln!("noesis: invalid turn bytes");
+                            continue;
+                        }
+                    };
+                    eprintln!("noesis: turn {} query={} args=({},{},{})",
+                        turn.turn_id, turn.query, turn.arg0, turn.arg1, turn.arg2);
+
+                    match protocol::handle_turn(samskara, &turn).await {
+                        Ok(resp) => {
+                            eprintln!("noesis: response {} kind={} count={}",
+                                resp.turn_id, resp.response, resp.count);
+                            let bytes = protocol::response_to_bytes(&resp);
+                            stdout.write_all(&bytes).await?;
+                            stdout.flush().await?;
+                        }
+                        Err(e) => {
+                            eprintln!("noesis: turn error: {e}");
+                            let err_resp = protocol::Response {
+                                turn_id: turn.turn_id,
+                                response: 9, // error
+                                count: 0,
+                                entries: vec![],
+                            };
+                            let bytes = protocol::response_to_bytes(&err_resp);
+                            stdout.write_all(&bytes).await?;
+                            stdout.flush().await?;
+                        }
+                    }
+                }
+                Err(_) => break, // EOF
+            }
+        }
+    } else if let Some(script) = &cli.query {
         // Single query mode
         let result = client::rpc_query(samskara, script).await?;
         println!("{}", String::from_utf8_lossy(&result));
