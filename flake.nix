@@ -15,11 +15,14 @@
     samskara-src = { url = "github:LiGoldragon/samskara"; flake = false; };
     noesis-schema-src = { url = "github:LiGoldragon/noesis-schema"; flake = false; };
     lojix-macros-src = { url = "github:LiGoldragon/lojix-macros"; flake = false; };
+    sema-core-src = { url = "github:LiGoldragon/sema-core"; flake = false; };
+    sema-src = { url = "github:LiGoldragon/sema"; flake = false; };
   };
 
   outputs = { self, nixpkgs, flake-utils, crane, fenix,
               criome-cozo-src, samskara-core-src, samskara-codegen-src,
-              samskara-src, noesis-schema-src, lojix-macros-src, ... }:
+              samskara-src, noesis-schema-src, lojix-macros-src,
+              sema-core-src, sema-src, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
@@ -55,6 +58,8 @@ proc-macro = true
 criome-cozo = { workspace = true }
 samskara-codegen = { workspace = true }
 samskara-core = { workspace = true }
+sema-core = { workspace = true }
+sema = { workspace = true }
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
@@ -73,12 +78,16 @@ EOF
             cp -rL ${samskara-codegen-src} $sourceRoot/flake-crates/samskara-codegen
             cp -rL ${samskara-src} $sourceRoot/flake-crates/samskara
             cp -rL ${noesis-schema-src} $sourceRoot/flake-crates/noesis-schema
+            cp -rL ${sema-core-src} $sourceRoot/flake-crates/sema-core
+            cp -rL ${sema-src} $sourceRoot/flake-crates/sema
             cp -rL ${lojixMacrosPatched} $sourceRoot/flake-crates/lojix-macros
             chmod -R u+w $sourceRoot/flake-crates/lojix-macros
             # lojix-macros include_str! needs schema files relative to its CARGO_MANIFEST_DIR
             mkdir -p $sourceRoot/flake-crates/lojix-macros/flake-crates
             ln -sf ../../samskara $sourceRoot/flake-crates/lojix-macros/flake-crates/samskara
             ln -sf ../../noesis-schema $sourceRoot/flake-crates/lojix-macros/flake-crates/noesis-schema
+            ln -sf ../../sema-core $sourceRoot/flake-crates/lojix-macros/flake-crates/sema-core
+            ln -sf ../../sema $sourceRoot/flake-crates/lojix-macros/flake-crates/sema
           '';
         };
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;

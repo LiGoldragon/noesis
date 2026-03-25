@@ -31,6 +31,16 @@ fn main() {
     load_script(&db, include_str!("flake-crates/samskara/schema/samskara-world-init.cozo"));
     load_script(&db, include_str!("flake-crates/samskara/schema/samskara-world-seed.cozo"));
 
+    // Load sema-core (generators, astrological domains, structure, Name)
+    load_script(&db, sema_core::INIT);
+    load_script(&db, sema_core::SEED);
+    load_script(&db, sema_core::FIELD_SEED);
+
+    // Load sema language layer (programming logic, protocol, testing)
+    load_script(&db, sema::INIT);
+    load_script(&db, sema::SEED);
+    load_script(&db, sema::FIELD_SEED);
+
     // Load noesis schema (from flake-crates)
     load_script(&db, include_str!("flake-crates/noesis-schema/noesis-world-init.cozo"));
     load_script(&db, include_str!("flake-crates/noesis-schema/noesis-world-seed.cozo"));
