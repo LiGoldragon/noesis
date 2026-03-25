@@ -205,7 +205,10 @@ async fn domain_name_at_ordinal(
         .and_then(|rows| rows.get(ordinal as usize))
         .and_then(|row| row.as_array())
         .and_then(|arr| arr.first())
-        .and_then(|v| v.as_str())
+        .and_then(|v| {
+            // CozoDB returns strings as either "value" or {"Str": "value"}
+            v.as_str().or_else(|| v.get("Str").and_then(|s| s.as_str()))
+        })
         .ok_or_else(|| format!("no domain at ordinal {ordinal}"))?;
 
     Ok(name.to_string())
