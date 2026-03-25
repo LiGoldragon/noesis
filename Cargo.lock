@@ -1381,6 +1381,8 @@ dependencies = [
  "quote",
  "samskara-codegen",
  "samskara-core",
+ "sema",
+ "sema-core",
  "serde_json",
  "syn 2.0.117",
 ]
@@ -1586,6 +1588,8 @@ dependencies = [
  "lojix-macros",
  "samskara-codegen",
  "samskara-core",
+ "sema",
+ "sema-core",
  "tokio",
  "tokio-util",
 ]
@@ -2380,6 +2384,14 @@ dependencies = [
  "ring",
  "untrusted",
 ]
+
+[[package]]
+name = "sema"
+version = "0.1.0"
+
+[[package]]
+name = "sema-core"
+version = "0.1.0"
 
 [[package]]
 name = "semver"

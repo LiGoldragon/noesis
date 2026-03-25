@@ -31,7 +31,12 @@ fn main() {
     load_script(&db, include_str!("flake-crates/samskara/schema/samskara-world-init.cozo"));
     load_script(&db, include_str!("flake-crates/samskara/schema/samskara-world-seed.cozo"));
 
-    // Load sema-core (generators, astrological domains, structure, Name)
+    // Load noesis schema (creates Direction, Name, units, field_type, etc.)
+    load_script(&db, include_str!("flake-crates/noesis-schema/noesis-world-init.cozo"));
+    load_script(&db, include_str!("flake-crates/noesis-schema/noesis-world-seed.cozo"));
+    load_script(&db, include_str!("flake-crates/noesis-schema/noesis-field-type-seed.cozo"));
+
+    // Load sema-core (new generators, structure, Name mapping)
     load_script(&db, sema_core::INIT);
     load_script(&db, sema_core::SEED);
     load_script(&db, sema_core::FIELD_SEED);
@@ -40,11 +45,6 @@ fn main() {
     load_script(&db, sema::INIT);
     load_script(&db, sema::SEED);
     load_script(&db, sema::FIELD_SEED);
-
-    // Load noesis schema (from flake-crates)
-    load_script(&db, include_str!("flake-crates/noesis-schema/noesis-world-init.cozo"));
-    load_script(&db, include_str!("flake-crates/noesis-schema/noesis-world-seed.cozo"));
-    load_script(&db, include_str!("flake-crates/noesis-schema/noesis-field-type-seed.cozo"));
 
     // Generate capnp schema — field_type graph is now loaded
     let schema =
