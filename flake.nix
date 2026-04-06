@@ -9,14 +9,14 @@
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    criome-cozo-src = { url = "github:LiGoldragon/criome-cozo"; flake = false; };
-    samskara-core-src = { url = "github:LiGoldragon/samskara-core"; flake = false; };
-    samskara-codegen-src = { url = "github:LiGoldragon/samskara-codegen"; flake = false; };
+    criome-cozo-src = { url = "github:LiGoldragon/criome-cozo/v1"; flake = false; };
+    samskara-core-src = { url = "github:LiGoldragon/samskara-core/v1"; flake = false; };
+    samskara-codegen-src = { url = "github:LiGoldragon/samskara-codegen/v1"; flake = false; };
     samskara-src = { url = "github:LiGoldragon/samskara"; flake = false; };
     noesis-schema-src = { url = "github:LiGoldragon/noesis-schema"; flake = false; };
     lojix-macros-src = { url = "github:LiGoldragon/lojix-macros"; flake = false; };
-    sema-core-src = { url = "github:LiGoldragon/sema-core"; flake = false; };
-    sema-src = { url = "github:LiGoldragon/sema"; flake = false; };
+    sema-core-src = { url = "github:LiGoldragon/sema-core/v1"; flake = false; };
+    sema-src = { url = "github:LiGoldragon/sema/v1"; flake = false; };
   };
 
   outputs = { self, nixpkgs, flake-utils, crane, fenix,
