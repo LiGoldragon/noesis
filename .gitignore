@@ -1,2 +1,18 @@
+# Rust
 /target
-/flake-crates
+
+# Nix
+.direnv/
+result
+
+# Editor tempfiles
+\#*\#
+.\#*
+*~
+.*.swp
+
+# MCP config (local)
+.mcp.json
+
+# Databases (local)
+*.db
